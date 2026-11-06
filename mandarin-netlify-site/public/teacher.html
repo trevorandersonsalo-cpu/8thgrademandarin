@@ -28,6 +28,7 @@ tr.s:hover{background:var(--jade-soft)}tr.s td.nm{cursor:pointer}.sub{color:var(
 .sel{position:sticky;bottom:12px;background:var(--ink);color:#fff;border-radius:16px;padding:10px 14px;margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}.sel select{min-height:38px}
 dialog{border:3px solid var(--line);border-radius:20px;padding:20px;max-width:640px;width:calc(100% - 32px);background:var(--surface);color:var(--ink)}dialog::backdrop{background:rgba(20,38,43,.5)}
 .sec{border:2px solid var(--line);border-radius:14px;padding:12px;margin:10px 0}.sec textarea{width:100%;min-height:60px}
+.gcell{display:inline-block;min-width:30px;height:26px;line-height:26px;border-radius:6px;font-weight:700;text-align:center;padding:0 4px}.gcell.done{background:var(--ok);color:#fff}.gcell.prog{background:#c98a00;color:#fff}.gcell.skip{background:#7d93a0;color:#fff}.gcell.direct{background:var(--jade-soft);color:var(--jade-d)}.gcell.none{background:#eef5f2}
 .empty{text-align:center;padding:30px 10px;color:var(--muted)}.empty img{width:110px}
 .login{max-width:460px;margin:60px auto;text-align:center}.login img{width:150px}
 </style></head><body>
@@ -284,9 +285,16 @@ function mod(st,obj,m){ if(m==="S"){ const d=st.reviews.filter(r=>r.obj===obj&&r
  const rs=st.rounds.filter(r=>r.obj===obj&&r.mod===m).sort((a,b)=>a.ts-b.ts),w=rs.slice(-ROUNDS); if(!rs.length) return {pct:null,ok:false};
  const c=w.reduce((a,r)=>a+r.correct,0),t=w.reduce((a,r)=>a+r.total,0),p=Math.round(100*c/t); return {pct:p,ok:w.length>=ROUNDS&&p>=MASTER*100}; }
 const cls=p=>p==null?"n":p>=85?"g":p>=65?"y":"r",pill=p=>`<span class="p ${cls(p)}">${p==null?"–":p+"%"}</span>`;
+function gstat(st,o){ const g=(st.guided||{})[o.id]||{};
+ if(g.done||g.pct!=null) return {k:"done",ic:"✓",tx:"Completed"+(g.pct!=null?" ("+g.pct+"% first try)":"")};
+ if(g.started) return {k:"prog",ic:"◐",tx:"In progress"+(g.step&&g.total?" (step "+g.step+" of "+g.total+")":"")};
+ if(g.skipped) return {k:"skip",ic:"⏭",tx:"Skipped (went to practice)"};
+ if(st.rounds.some(r=>r.obj===o.id)) return {k:"direct",ic:"→",tx:"Practiced without the guided lesson"};
+ return {k:"none",ic:"",tx:"Not started"}; }
+const gdone=st=>OBJ.filter(o=>gstat(st,o).k==="done").length;
 const mastered=(st,o)=>["L","R","W"].every(m=>mod(st,o.id,m).ok);
 function sum(st){ const rs=st.rounds.filter(r=>r.obj!=="plc"),last=rs.slice(-10),c=last.reduce((a,r)=>a+r.correct,0),t=last.reduce((a,r)=>a+r.total,0);
- return {name:(st.profile&&st.profile.name)||st.name||st.email,rounds:rs.length,recent:t?Math.round(100*c/t):null,mastered:OBJ.filter(o=>mastered(st,o)).length,last:st.updated||0,pend:st.reviews.filter(r=>r.status==="pending").length}; }
+ return {name:(st.profile&&st.profile.name)||st.name||st.email,rounds:rs.length,recent:t?Math.round(100*c/t):null,mastered:OBJ.filter(o=>mastered(st,o)).length,guided:gdone(st),last:st.updated||0,pend:st.reviews.filter(r=>r.status==="pending").length}; }
 const ago=t=>{ if(!t) return "never"; const d=(Date.now()-t)/864e5; return d<1?"today":d<2?"yesterday":Math.floor(d)+" days ago"; };
 const secName=id=>(SECS.find(s=>s.id===id)||{}).name||"";
 const inView=()=>DATA.filter(s=>view==="all"||(view==="none"?!s.section:s.section===view));
@@ -307,7 +315,7 @@ function draw(){ if(sel) return detail(); const ss=inView().map(s=>({s,m:sum(s)}
  else body=`<div class="stats"><div class="stat"><b>${ss.length}</b><span>students</span></div><div class="stat"><b>${week}</b><span>active in the last 7 days</span></div><div class="stat"><b>${avg==null?"–":avg+"%"}</b><span>average recent score</span></div><div class="stat"><b>${ss.length?(ss.reduce((a,x)=>a+x.m.mastered,0)/ss.length).toFixed(1):0}</b><span>skills mastered per student (of ${OBJ.length})</span></div></div>
  <div class="two"><div class="card"><h3>Needs attention</h3><p class="sub">No activity in 7+ days, or recent score under 65%.</p>${need.length?need.map(x=>`<div class="att" data-i="${DATA.indexOf(x.s)}"><span>${esc(x.m.name)}</span><span class="sub">${ago(x.m.last)} ${pill(x.m.recent)}</span></div>`).join(""):`<p class="mut">Everyone is on track. 太棒了!</p>`}</div>
  <div class="card bars"><h3>Class mastery by skill</h3><p class="sub">Share of students who mastered listening, reading and writing.</p>${bars}</div></div>
- <div class="pills"><button data-t="students" aria-pressed="${tab==="students"}">Students</button><button data-t="heat" aria-pressed="${tab==="heat"}">Heat map</button></div>${tab==="heat"?heat(ss):table(ss)}`;
+ <div class="pills"><button data-t="students" aria-pressed="${tab==="students"}">Students</button><button data-t="heat" aria-pressed="${tab==="heat"}">Heat map</button><button data-t="guide" aria-pressed="${tab==="guide"}">Guided lessons</button></div>${tab==="heat"?heat(ss):tab==="guide"?guide(ss):table(ss)}`;
  $("#out").innerHTML=frame(body); wireFrame();
  document.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{tab=b.dataset.t;draw()});
  document.querySelectorAll(".att,.nm").forEach(r=>r.onclick=()=>{sel=DATA[+(r.dataset.i??r.parentNode.dataset.i)];draw()});
@@ -321,16 +329,21 @@ function draw(){ if(sel) return detail(); const ss=inView().map(s=>({s,m:sum(s)}
 function table(ss){ ss=ss.filter(x=>(x.m.name+x.s.email).toLowerCase().includes(filt));
  ss.sort((a,b)=>sortK==="name"?a.m.name.localeCompare(b.m.name):sortK==="sec"?secName(a.s.section).localeCompare(secName(b.s.section)):sortK==="last"?b.m.last-a.m.last:(b.m[sortK]??-1)-(a.m[sortK]??-1));
  const ad=ME.admin;
- return `<div class="card"><div class="row"><input id="f" placeholder="Search students" value="${esc(filt)}"><span class="grow"></span><button id="csv">Download CSV</button></div><div class="tbl"><table><tr>${ad?`<th><input type="checkbox" id="pkall"></th>`:""}<th data-k="name">Student</th><th data-k="sec">Section</th><th data-k="last">Last active</th><th data-k="rounds">Rounds</th><th data-k="recent">Recent score</th><th data-k="mastered">Mastered</th><th data-k="pend">Waiting</th></tr>
- ${ss.map(x=>`<tr class="s" data-i="${DATA.indexOf(x.s)}">${ad?`<td><input type="checkbox" class="pk" value="${x.s.sub}" ${picked.has(x.s.sub)?"checked":""}></td>`:""}<td class="nm"><b>${esc(x.m.name)}</b><div class="sub">${esc(x.s.email)}</div></td><td>${x.s.section?`<span class="tag">${esc(secName(x.s.section))}</span>`:`<span class="tag none">Unassigned</span>`}</td><td>${ago(x.m.last)}</td><td>${x.m.rounds}</td><td>${pill(x.m.recent)}</td><td>${x.m.mastered}/${OBJ.length}</td><td>${x.m.pend||""}</td></tr>`).join("")}</table></div>
+ return `<div class="card"><div class="row"><input id="f" placeholder="Search students" value="${esc(filt)}"><span class="grow"></span><button id="csv">Download CSV</button></div><div class="tbl"><table><tr>${ad?`<th><input type="checkbox" id="pkall"></th>`:""}<th data-k="name">Student</th><th data-k="sec">Section</th><th data-k="last">Last active</th><th data-k="rounds">Rounds</th><th data-k="recent">Recent score</th><th data-k="mastered">Mastered</th><th data-k="guided">Guided lessons</th><th data-k="pend">Waiting</th></tr>
+ ${ss.map(x=>`<tr class="s" data-i="${DATA.indexOf(x.s)}">${ad?`<td><input type="checkbox" class="pk" value="${x.s.sub}" ${picked.has(x.s.sub)?"checked":""}></td>`:""}<td class="nm"><b>${esc(x.m.name)}</b><div class="sub">${esc(x.s.email)}</div></td><td>${x.s.section?`<span class="tag">${esc(secName(x.s.section))}</span>`:`<span class="tag none">Unassigned</span>`}</td><td>${ago(x.m.last)}</td><td>${x.m.rounds}</td><td>${pill(x.m.recent)}</td><td>${x.m.mastered}/${OBJ.length}</td><td>${x.m.guided}/${OBJ.length}</td><td>${x.m.pend||""}</td></tr>`).join("")}</table></div>
  ${ad&&picked.size?`<div class="sel"><b>${picked.size} selected</b><span>Move to</span><select id="to">${SECS.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("")}<option value="none">Unassigned</option></select><button id="mv" class="primary">Move</button></div>`:""}</div>`; }
 function heat(ss){ ss=ss.slice().sort((a,b)=>a.m.name.localeCompare(b.m.name));
  return `<div class="card"><p class="sub">Each square is a skill (average of listening, reading and writing). ★ = mastered. Green 85%+, gold 65–84%, red under 65%, grey not started.</p><div class="tbl"><table class="hm"><tr><th class="nm">Student</th>${OBJ.map(o=>`<th title="${esc(o.title)}">${esc(o.zh)}</th>`).join("")}</tr>
  ${ss.map(x=>`<tr class="s" data-i="${DATA.indexOf(x.s)}"><td class="nm"><b>${esc(x.m.name)}</b></td>${OBJ.map(o=>{ const v=["L","R","W"].map(m=>mod(x.s,o.id,m).pct).filter(p=>p!=null); const p=v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):null; return `<td><span class="cell ${cls(p)}" title="${esc(o.title)}: ${p==null?"not started":p+"%"}">${mastered(x.s,o)?"★":p==null?"":p}</span></td>`; }).join("")}</tr>`).join("")}</table></div></div>`; }
+function guide(ss){ ss=ss.slice().sort((a,b)=>a.m.name.localeCompare(b.m.name)); const n=ss.length||1;
+ const foot=OBJ.map(o=>{ const c=ss.filter(x=>gstat(x.s,o).k==="done").length; return `<td title="${c} of ${ss.length} completed">${Math.round(100*c/n)}%</td>`; }).join("");
+ return `<div class="card"><p class="sub">Guided lessons are optional. ✓ completed · ◐ started, not finished · ⏭ chose to skip · → practiced without doing the lesson. Hover a symbol for details.</p><div class="tbl"><table class="hm"><tr><th class="nm">Student</th>${OBJ.map(o=>`<th title="${esc(o.title)}">${esc(o.zh)}</th>`).join("")}</tr>
+ ${ss.map(x=>`<tr class="s" data-i="${DATA.indexOf(x.s)}"><td class="nm"><b>${esc(x.m.name)}</b></td>${OBJ.map(o=>{ const g=gstat(x.s,o); return `<td><span class="gcell ${g.k}" title="${esc(o.title)}: ${esc(g.tx)}">${g.ic}</span></td>`; }).join("")}</tr>`).join("")}
+ <tr><td class="nm"><b>Class completion</b></td>${foot}</tr></table></div></div>`; }
 function detail(){ const st=sel,m=sum(st);
  $("#out").innerHTML=`<div class="row" style="margin-bottom:12px"><button id="bk">← Back</button></div><div class="card"><h2>${esc(m.name)}</h2><p class="mut">${esc(st.email)} · ${st.section?esc(secName(st.section)):"Unassigned"} · last active ${ago(m.last)} · ${m.rounds} rounds</p>
- <div class="tbl"><table class="hm"><tr><th class="nm" style="font:600 .78rem var(--body)">SKILL</th>${MODS.map(x=>`<th style="font:600 .78rem var(--body)">${MN[x].toUpperCase()}</th>`).join("")}</tr>
- ${OBJ.map(o=>`<tr><td class="nm">${esc(o.title)}</td>${MODS.map(x=>{const r=mod(st,o.id,x);return `<td>${pill(r.pct)}${r.ok?" ★":""}</td>`}).join("")}</tr>`).join("")}</table></div><p class="sub">★ = mastered (${MASTER*100}% across the last ${ROUNDS} rounds).</p></div>`;
+ <div class="tbl"><table class="hm"><tr><th class="nm" style="font:600 .78rem var(--body)">SKILL</th>${MODS.map(x=>`<th style="font:600 .78rem var(--body)">${MN[x].toUpperCase()}</th>`).join("")}<th style="font:600 .78rem var(--body)">GUIDED LESSON</th></tr>
+ ${OBJ.map(o=>`<tr><td class="nm">${esc(o.title)}</td>${MODS.map(x=>{const r=mod(st,o.id,x);return `<td>${pill(r.pct)}${r.ok?" ★":""}</td>`}).join("")}<td><span class="gcell ${gstat(st,o).k}">${gstat(st,o).ic}</span> <span class="sub">${esc(gstat(st,o).tx)}</span></td></tr>`).join("")}</table></div><p class="sub">★ = mastered (${MASTER*100}% across the last ${ROUNDS} rounds).</p></div>`;
  $("#bk").onclick=()=>{sel=null;draw()}; }
 function csv(){ const rows=inView().map(s=>{const m=sum(s);return [m.name,s.email,secName(s.section),m.last?new Date(m.last).toISOString().slice(0,10):"",m.rounds,m.recent??"",m.mastered]});
  const t=[["Name","Email","Section","Last active","Rounds","Recent score","Skills mastered"],...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\n"); const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([t],{type:"text/csv"})); a.download="mandarin-"+(view==="all"?"all":secName(view)||"unassigned")+".csv"; a.click(); }

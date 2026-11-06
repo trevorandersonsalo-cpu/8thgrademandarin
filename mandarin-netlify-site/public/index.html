@@ -1127,7 +1127,7 @@ function extHTML(o){
 function wireObjective(o){
   app.querySelectorAll(".say").forEach(b=>b.onclick=()=>{ if(!speak(b.dataset.say)) flash("Audio is not available on this device."); });
   const tp=$("#toPractice"); if(tp) tp.onclick=()=>{S.view.tab="practice";render()};
-  const gs=$("#glStart"); if(gs) gs.onclick=()=>glStart(o); const tp2=$("#toPractice2"); if(tp2) tp2.onclick=()=>{S.view.tab="practice";render()};
+  const gs=$("#glStart"); if(gs) gs.onclick=()=>glStart(o); const tp2=$("#toPractice2"); if(tp2) tp2.onclick=()=>{ const r=glDone()[o.id]||{}; if(!r.done&&r.pct==null&&!r.started&&!r.skipped) glMark(o.id,{skipped:Date.now()}); S.view.tab="practice";render()};
   app.querySelectorAll("[data-round]").forEach(b=>b.onclick=()=>b.dataset.round==="H"?hwStartRound(o):startRound(o,b.dataset.round));
   app.querySelectorAll("[data-hwstudio]").forEach(b=>b.onclick=()=>{ S.view={obj:null,tab:"learn",vocab:null,hw:{screen:"home",filter:b.dataset.hwstudio}}; render(); window.scrollTo(0,0); });
   app.querySelectorAll("[data-eq]").forEach(box=>{ const q=o.ext.read.qs[+box.dataset.eq];
@@ -1703,9 +1703,10 @@ function glBuild(o){
   if(ss.length>6){ const pick=[]; for(let k=0;k<6;k++) pick.push(ss[Math.round(k*(ss.length-1)/5)]); ss=[...new Set(pick)]; }
   ss.forEach((s,k)=>{ steps.push({t:"sent",s}); if(k===0&&o.tip) steps.push({t:"grammar",ss:ss.slice(0,2)}); steps.push({t:["build","fill","listen"][k%3],s}); });
   steps.push({t:"done"}); return steps; }
-function glStart(o){ S.view={obj:o.id,tab:"learn",vocab:null,gl:{o,steps:glBuild(o),i:0,ok:0,total:0}}; render(); window.scrollTo(0,0); }
+function glMark(id,patch){ const d=glDone(), r=d[id]||{}; d[id]={...r,...patch}; LS.set("m8.guided",d); }
+function glStart(o){ const steps=glBuild(o), r=glDone()[o.id]||{}; if(!r.done&&r.pct==null) glMark(o.id,{started:Date.now(),total:steps.length-1}); S.view={obj:o.id,tab:"learn",vocab:null,gl:{o,steps,i:0,ok:0,total:0}}; render(); window.scrollTo(0,0); }
 const glDone=()=>LS.get("m8.guided",{});
-function glCard(o){ const d=glDone()[o.id], n=o.vocab.length;
+function glCard(o){ const d0=glDone()[o.id], d=d0&&(d0.done||d0.pct!=null), n=o.vocab.length;
   return `<div class="card glintro"><div class="row" style="flex-wrap:nowrap">${monkey("cheer",72)}<div><h3>Guided lesson ${d?'<span class="tag ok">Completed</span>':'<span class="tag">Optional</span>'}</h3><p class="muted small" style="margin:4px 0 0">Wukong teaches the ${n} words and the grammar one step at a time, with pictures, sentences and quick checks. Already know this? Skip straight to practice.</p></div></div>
   <div class="row"><button class="primary" id="glStart">${d?"Do the guided lesson again":"Start guided lesson"}</button><button id="toPractice2">Skip to practice →</button></div></div>`; }
 function glOpts(opts){ const pic=opts.some(x=>x.pic); return `<div class="glopts ${pic?"pic":""}">${opts.map((x,i)=>`<button data-i="${i}" class="${x.zh?"zh":""}">${x.h}</button>`).join("")}</div>`; }
@@ -1765,11 +1766,12 @@ const GLR={
    const opts=shuffle([{h:esc(s[2]),ok:1},...shuffle(pool).slice(0,2).map(t=>({h:esc(t)}))]); const can=("speechSynthesis" in window);
    el.innerHTML=`<div class="card glcard"><div class="small muted">Listen and choose</div><h3>${can?"What did you hear?":"What does this say?"}</h3><button class="glsay primary">🔊 Play</button>${can?"":`<div class="glsent">${glToks(s).map(t=>`<span class="zh">${esc(t)}</span>`).join("")}</div>`}</div>`; const c=el.firstChild; glSay(c,plain(s[0]));
    setTimeout(()=>{ try{ speak(plain(s[0])); }catch(e){} },200); glChoose(G,st,c,opts,opts.findIndex(x=>x.ok),`<span class="zh">${esc(plain(s[0]))}</span><div class="py">${esc(s[1])}</div>`); },
- done(G,st,el){ const o=G.o, d=glDone(), first=!d[o.id], pct=G.total?Math.round(100*G.ok/G.total):100;
-   if(first){ addXP(20); } d[o.id]={ts:Date.now(),pct}; LS.set("m8.guided",d);
+ done(G,st,el){ const o=G.o, d=glDone(), first=!(d[o.id]&&(d[o.id].done||d[o.id].pct!=null)), pct=G.total?Math.round(100*G.ok/G.total):100;
+   if(first){ addXP(20); } glMark(o.id,{done:true,ts:Date.now(),pct});
    el.innerHTML=`<div class="card glcard">${monkey("cheer",130)}<h2>Lesson complete! 太棒了!</h2><p>You got <b>${G.ok} of ${G.total}</b> checks right on the first try (${pct}%).${first?" <b>+20 XP</b>":""}</p><p class="muted small">${pct>=85?"You're ready for practice.":"Nice work. Do the lesson again anytime, or head to practice and use Smart review to lock the words in."}</p><div class="row" style="justify-content:center"><button class="primary" id="glPr">Go to practice →</button><button id="glAg">Back to lesson</button></div></div>`;
    $("#glPr").onclick=()=>{ S.view={obj:o.id,tab:"practice",vocab:null}; render(); window.scrollTo(0,0); }; $("#glAg").onclick=()=>{ S.view={obj:o.id,tab:"learn",vocab:null}; render(); }; } };
 function renderGuide(){ const G=S.view.gl, st=G.steps[G.i], total=G.steps.length-1;
+  if(st.t!=="done"){ const r=glDone()[G.o.id]||{}; if(!r.done&&r.pct==null&&G.i>(r.step||0)) glMark(G.o.id,{step:G.i,total}); }
   app.innerHTML=`<div class="row"><button class="ghost" id="glx">← Exit lesson</button><span class="muted small">${esc(G.o.title)}</span></div><div class="glprog" role="progressbar" aria-valuenow="${G.i}" aria-valuemax="${total}"><i style="width:${Math.round(100*G.i/total)}%"></i></div><div id="glbody"></div>`;
   $("#glx").onclick=()=>{ try{ speechSynthesis.cancel(); }catch(e){} S.view={obj:G.o.id,tab:"learn",vocab:null}; render(); };
   GLR[st.t](G,st,$("#glbody")); }
