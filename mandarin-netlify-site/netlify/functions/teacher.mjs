@@ -1,6 +1,6 @@
 import {getStore} from "@netlify/blobs";
 import {verify} from "./_auth.mjs";
-const cfgStore=()=>getStore("admin");
+const cfgStore=()=>getStore({name:"admin",consistency:"strong"});
 const loadCfg=async()=>{ const c=(await cfgStore().get("config",{type:"json"}))||{}; return {sections:c.sections||[],assign:c.assign||{}}; };
 const rid=()=>Math.random().toString(36).slice(2,8);
 const emails=a=>[...new Set((a||[]).map(e=>String(e).trim().toLowerCase()).filter(e=>/^[^@\s]+@[^@\s]+$/.test(e)))];
@@ -23,10 +23,10 @@ export default async(req)=>{
   }
 
   const visible=admin?cfg.sections:mine, ids=new Set(visible.map(s=>s.id));
-  const store=getStore("students"); const {blobs}=await store.list();
+  const store=getStore({name:"students",consistency:"strong"}); const {blobs}=await store.list();
   let rows=(await Promise.all(blobs.map(b=>store.get(b.key,{type:"json"})))).filter(Boolean).map(s=>({
     sub:s.sub,email:s.email,name:s.name,updated:s.updated,section:cfg.assign[s.sub]||null,
-    profile:s.keys["m8.profile"]||null,rounds:s.keys["m8.rounds"]||[],reviews:s.keys["m8.reviews"]||[]}));
+    profile:s.keys["m8.profile"]||null,rounds:s.keys["m8.rounds"]||[],reviews:s.keys["m8.reviews"]||[],guided:s.keys["m8.guided"]||{}}));
   if(!admin) rows=rows.filter(r=>r.section&&ids.has(r.section));
   return Response.json({me:{email:u.email,admin},sections:visible.map(s=>admin?s:{id:s.id,name:s.name}),students:rows});
 };
